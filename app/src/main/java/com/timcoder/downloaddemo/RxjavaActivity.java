@@ -15,6 +15,7 @@ import com.timcoder.downloaddemo.demo.polling.TranslateBean;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 
 import io.reactivex.Observable;
@@ -24,8 +25,11 @@ import io.reactivex.ObservableSource;
 import io.reactivex.Observer;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.BiConsumer;
+import io.reactivex.functions.BiFunction;
 import io.reactivex.functions.Consumer;
 import io.reactivex.functions.Function;
+import io.reactivex.schedulers.Schedulers;
 
 /**
  * @author Administrator
@@ -218,7 +222,6 @@ public class RxjavaActivity extends AppCompatActivity {
     // TODO 变化操作符 map/flatMap/concatMap/buffer; 应用场景：数据类型转换, 嵌套回调
     public void translateOperator(View view) {
         // TODO 将被观察者发送的事件转换为任意类型的事件
-        Log.e("zangdianbin", "translateOperator");
         Observable.create(new ObservableOnSubscribe<Integer>() {
             @Override
             public void subscribe(ObservableEmitter<Integer> emitter) throws Exception {
@@ -328,9 +331,23 @@ public class RxjavaActivity extends AppCompatActivity {
         }
     }
 
-    // TODO 组合/合并操作符:组合多个被观察者&合并需要发送的事件
+    /**
+     * 组合/合并操作符:组合多个被观察者&合并需要发送的事件
+     * concat/concatArray:
+     * merge/mergeArray:
+     * concatDelayError/mergeDelayError:
+     *
+     * zip:
+     * combineLatest:
+     * combineLatestDelayError:
+     * reduce:
+     * collect:
+     * startWith/startWithArray:
+     * count:
+     * @param view
+     */
     public void combineOperator(View view) {
-        // concat(size<=4)/concatArray(size>4) 按发送顺序组合多个呗观察者一起发送数据，合并后按发送顺序串行执行
+        // concat(size<=4)/concatArray(size>4) 按发送顺序组合多个被观察者一起发送数据，合并后按发送顺序串行执行
         Observable.concat(Observable.just(1, 2, 3),
                 Observable.just(4, 5, 6),
                 Observable.just(7, 8, 9))
@@ -347,10 +364,155 @@ public class RxjavaActivity extends AppCompatActivity {
                 .subscribe(new Consumer<Long>() {
                     @Override
                     public void accept(Long aLong) throws Exception {
-                        Log.e(TAG, "Combine merge value=" + aLong);
+//                        Log.e(TAG, "Combine merge value=" + aLong);
                     }
                 });
 
         // concatDelayError/mergeDelayError 当组合多个被观察者时，其中一个出现onError时会中断其他被观察者发送事件
+        // ...
+
+        // zip合并多个被观察者中发送的事件:严格按照原先的顺序进行对位合并,数量=多个被观察者中事件最少的那个数量
+        Observable<Integer> observable1 = Observable.create(new ObservableOnSubscribe<Integer>() {
+            @Override
+            public void subscribe(ObservableEmitter<Integer> emitter) throws Exception {
+                try {
+                    emitter.onNext(1);
+                    Thread.sleep(1000);
+                    emitter.onNext(2);
+                    Thread.sleep(1000);
+                    emitter.onNext(3);
+                    Thread.sleep(1000);
+//                    emitter.onNext(4);
+//                    Thread.sleep(1000);
+//                    emitter.onNext(5);
+//                    Thread.sleep(1000);
+//                    emitter.onNext(6);
+//                    Thread.sleep(1000);
+                    emitter.onComplete();
+                } catch (InterruptedException e) {
+//                    Log.e(TAG, "observable1 error=" + e.getMessage());
+                }
+            }
+        }).subscribeOn(Schedulers.io());
+
+        Observable<String> observable2 = Observable.create(new ObservableOnSubscribe<String>() {
+            @Override
+            public void subscribe(ObservableEmitter<String> emitter) throws Exception {
+                try {
+                    emitter.onNext("A");
+                    Thread.sleep(1000);
+                    emitter.onNext("B");
+                    Thread.sleep(1000);
+                    emitter.onNext("C");
+                    Thread.sleep(1000);
+                    emitter.onNext("D");
+                    Thread.sleep(1000);
+                    emitter.onComplete();
+                } catch (InterruptedException e) {
+//                    Log.e(TAG, "observable2 error=" + e.getMessage());
+                }
+            }
+        }).subscribeOn(Schedulers.newThread());
+
+        Observable.zip(observable1, observable2, new BiFunction<Integer, String, String>() {
+            @Override
+            public String apply(Integer integer, String s) throws Exception {
+                return s + integer;
+            }
+        }).subscribe(new Consumer<String>() {
+            @Override
+            public void accept(String s) throws Exception {
+//                Log.e(TAG, "zip value=" + s);
+            }
+        }, new Consumer<Throwable>() {
+            @Override
+            public void accept(Throwable throwable) throws Exception {
+//                Log.e(TAG, "zip error=" + throwable.getMessage());
+            }
+        });
+
+        // combineLatest 当两个observable中任何一个发送了数据后, 将先发送数据的obsersable的最新(最后)的一个数据与另外一个observable的每一个数据结合，形成新的事件序列
+        Observable.combineLatest(Observable.just(1L, 2L, 3L)
+                /*Observable.intervalRange(1L, 3, 1, 1, TimeUnit.SECONDS)*/, // 不确定性太大
+                Observable.intervalRange(0, 4, 1, 1, TimeUnit.SECONDS),
+                new BiFunction<Long, Long, Long>() {
+                    @Override
+                    public Long apply(Long aLong, Long aLong2) throws Exception {
+//                        Log.e(TAG, "aLong1=" + aLong + "  aLong2=" + aLong2);
+                        return aLong + aLong2;
+                    }
+                }).subscribe(new Consumer<Long>() {
+            @Override
+            public void accept(Long value) throws Exception {
+//                Log.e(TAG, "combineLatest value=" + value);
+            }
+        });
+
+        // combineLatestDelayError和concatDelayError作用类似
+
+        // reduce:把呗观察者需要发送的事件聚合成一个是事件&发送
+        Observable.just(1, 2, 3, 4)
+                .reduce(new BiFunction<Integer, Integer, Integer>() {
+                    @Override
+                    public Integer apply(Integer integer, Integer integer2) throws Exception {
+                        return integer * integer2;
+                    }
+                }).subscribe(new Consumer<Integer>() {
+            @Override
+            public void accept(Integer integer) throws Exception {
+//                Log.e(TAG, "reduce value=" + integer);
+            }
+        });
+
+        // collect 将被观察者发送的数据事件收集到一个数据结构里
+        Observable.just(1, 2, 3, 4, 5, 6)
+                .collect(new Callable<ArrayList<Integer>>() {
+                    @Override
+                    public ArrayList<Integer> call() throws Exception {
+                        return new ArrayList<>();
+                    }
+                }, new BiConsumer<ArrayList<Integer>, Integer>() {
+                    @Override
+                    public void accept(ArrayList<Integer> integers, Integer integer) throws Exception {
+                        integers.add(integer);
+                    }
+                }).subscribe(new Consumer<ArrayList<Integer>>() {
+            @Override
+            public void accept(ArrayList<Integer> integers) throws Exception {
+//                Log.e(TAG, "size=" + integers.size());
+            }
+        });
+
+        // startWith/startWithArray: 发送事件钱追加发送事件
+        // 1.追加一些数据
+        Observable.just(4, 5, 6)
+                .startWith(0)
+                .startWithArray(1, 2, 3)
+                .subscribe(new Consumer<Integer>() {
+                    @Override
+                    public void accept(Integer integer) throws Exception {
+//                        Log.e(TAG, "startWith value=" + integer);
+                    }
+                });
+        // 2.追加发送被观察者发送数据
+        Observable.just(4, 5, 6)
+                .startWith(Observable.just(1, 2, 3))
+                .subscribe(new Consumer<Integer>() {
+                    @Override
+                    public void accept(Integer integer) throws Exception {
+//                        Log.e(TAG, "startWith Observable value=" + integer);
+                    }
+                });
+
+        // count:统计被观察者发送事件的数量
+        Observable.just(1, 2, 3, 4)
+                .count()
+                .subscribe(new Consumer<Long>() {
+                    @Override
+                    public void accept(Long aLong) throws Exception {
+                        Log.e(TAG, "count value=" + aLong);
+                    }
+                });
     }
+
 }
